@@ -7,6 +7,7 @@ import threading
 import urllib.parse
 import subprocess
 import platform
+import socket
 from pathlib import Path
 
 import requests
@@ -210,6 +211,62 @@ if MAP.exists():
 else:
     mappings = dict(DEFAULT)
     write_json(MAP, mappings)
+
+
+# ============================================================
+# CARD LINKS
+# Every card gets a private key. Its holder opens
+# http://<LAPTOP-IP>:5000/card/<key> to pick their own song.
+# ============================================================
+
+# Guards mappings and mappings.json. Cards are changed from the GUI and
+# from phones hitting the Flask server at the same time.
+map_lock = threading.RLock()
+
+
+def new_key():
+    return secrets.token_urlsafe(9)
+
+
+def ensure_keys():
+    changed = False
+
+    for value in mappings.values():
+        if not value.get("key"):
+            value["key"] = new_key()
+            changed = True
+
+    if changed:
+        write_json(MAP, mappings)
+
+
+ensure_keys()
+
+
+def card_by_key(key):
+    for uid, value in mappings.items():
+        if value.get("key") == key:
+            return uid, value
+
+    return None, None
+
+
+def lan_ip():
+    """The laptop's address on the Wi-Fi, as phones will see it."""
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No packet is sent; this only picks the outgoing interface.
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def card_link(uid):
+    return f"http://{lan_ip()}:{PORT}/card/{mappings[uid]['key']}"
 
 
 # ============================================================
@@ -848,7 +905,8 @@ def server():
 # ============================================================
 
 def save():
-    write_json(MAP, mappings)
+    with map_lock:
+        write_json(MAP, mappings)
 
 
 def selected():
@@ -914,6 +972,7 @@ def add_card():
     mappings[uid] = {
         "name": name.strip() or uid,
         "spotify": url.strip(),
+        "key": new_key(),
     }
 
     save()
@@ -954,7 +1013,9 @@ def edit_card():
     if url is None:
         return
 
+    # Keep the card's key and anything else stored on it.
     mappings[uid] = {
+        **value,
         "name": name.strip() or uid,
         "spotify": url.strip(),
     }
