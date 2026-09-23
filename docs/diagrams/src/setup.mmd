@@ -1,0 +1,10 @@
+flowchart TD
+    A["1 · Create Spotify developer app"] --> B["2 · Put keys in .env"]
+    B --> C["3 · Windows settings"]
+    C --> D["4 · Start Tapnotic"]
+    D --> E["5 · Authorize Spotify"]
+    E --> F["6 · Test Devices"]
+    F --> G{"Laptop listed as<br/>type=Computer?"}
+    G -->|yes| H(["✅ Ready: tap a card"])
+    G -->|no| I["Open Spotify desktop,<br/>play any song once,<br/>then Test Devices again"]
+    I --> F

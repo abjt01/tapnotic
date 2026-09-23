@@ -1,0 +1,13 @@
+flowchart TD
+    tap(["Card tapped"]) --> on{"RFID CONTROL<br/>switched on?"}
+    on -->|no| off["Ignored<br/>(403)"]
+    on -->|yes| known{"Card known?"}
+    known -->|no| reg["Register it as the<br/>next number, e.g. 0024"]
+    reg --> qr
+    known -->|yes| song{"Has a song?"}
+    song -->|no| qr["Show QR code on laptop<br/>(202)"]
+    song -->|yes| playing{"Its song already<br/>playing on the laptop?"}
+    playing -->|yes| same["Nothing changes<br/>(200)"]
+    playing -->|no| newer{"Newer card tapped<br/>in the meantime?"}
+    newer -->|yes| skip["Skipped, newer card wins<br/>(200)"]
+    newer -->|no| play["▶ Play on the laptop<br/>(200)"]

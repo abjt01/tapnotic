@@ -16,13 +16,12 @@
 
 Every card is linked to one song. Tap the card on the reader and that song plays on the speaker.
 
-```mermaid
-flowchart LR
-    A(["🪪 Tap card"]) --> B["📡 Reader sends<br/>card number"]
-    B --> C["💻 Laptop finds<br/>the card's song"]
-    C --> D["🎵 Spotify plays it"]
-    D --> E(["🔊 Speaker"])
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="diagrams/overview-dark.svg">
+    <img src="diagrams/overview.svg" alt="Tap card, reader sends card number, laptop finds the song, Spotify plays it on the speaker">
+  </picture>
+</p>
 
 - **New card?** A QR code pops up on the laptop. The holder scans it with their phone and picks their own song.
 - **Same card while its song is playing?** Nothing happens, so it won't restart.
@@ -47,18 +46,12 @@ flowchart LR
 
 About 15 minutes, done once.
 
-```mermaid
-flowchart TD
-    A["1 · Create Spotify developer app"] --> B["2 · Put keys in .env"]
-    B --> C["3 · Windows settings"]
-    C --> D["4 · Start Tapnotic"]
-    D --> E["5 · Authorize Spotify"]
-    E --> F["6 · Test Devices"]
-    F --> G{"Laptop listed as<br/>type=Computer?"}
-    G -- yes --> H(["✅ Ready: tap a card"])
-    G -- no --> I["Open Spotify desktop,<br/>play any song once,<br/>then Test Devices again"]
-    I --> F
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="diagrams/setup-dark.svg">
+    <img src="diagrams/setup.svg" alt="First-time setup steps">
+  </picture>
+</p>
 
 ### Step 1: Create a Spotify developer app
 
@@ -162,15 +155,12 @@ If you see your laptop, **you're done.** 🎉
 
 ### What happens when a card is tapped
 
-```mermaid
-flowchart TD
-    T(["Card tapped"]) --> K{"Known card<br/>with a song?"}
-    K -- "No: new card,<br/>or no song yet" --> Q["📱 QR code pops up<br/>on the laptop"]
-    Q --> P["Holder scans it and<br/>picks a song (see §5)"]
-    K -- yes --> S{"That song is<br/>already playing?"}
-    S -- yes --> N["Nothing happens<br/>(so it won't restart)"]
-    S -- no --> PL(["🔊 Song plays"])
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="diagrams/tap-simple-dark.svg">
+    <img src="diagrams/tap-simple.svg" alt="What happens when a card is tapped">
+  </picture>
+</p>
 
 Tapping several cards quickly? **The last one wins.**
 
@@ -201,19 +191,12 @@ Lost the link? Ask whoever runs the laptop to select your card and press **Show 
 
 > 🔒 **Your link is private.** Anyone who has it can change your card's song, so don't share it.
 
-```mermaid
-sequenceDiagram
-    actor You
-    participant Reader
-    participant Laptop
-    participant Phone as Your phone
-    You->>Reader: Tap card
-    Reader->>Laptop: Card number
-    Laptop-->>You: QR code on screen
-    You->>Phone: Scan QR
-    Phone->>Laptop: Name + chosen song
-    Laptop-->>You: 🔊 Your song plays
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="diagrams/holder-sequence-dark.svg">
+    <img src="diagrams/holder-sequence.svg" alt="How a card holder picks their song">
+  </picture>
+</p>
 
 ---
 
@@ -248,19 +231,12 @@ Cards set up before the song picker existed still work. To give their holders a 
 
 ### "I tapped a card and nothing played"
 
-```mermaid
-flowchart TD
-    A(["Tapped, no sound"]) --> B{"Anything new in the<br/>Activity box?"}
-    B -- no --> C{"RFID CONTROL<br/>ticked?"}
-    C -- no --> C1["Tick it"]
-    C -- yes --> D["Reader can't reach the laptop:<br/>• same Wi-Fi?<br/>• Wi-Fi set to Private?<br/>• laptop IP changed?"]
-    B -- yes --> E{"What does it say?"}
-    E -- "…has no song; showing QR" --> F["Card needs a song:<br/>scan the QR (§5)"]
-    E -- "same song, no change" --> G["Song is already playing.<br/>Check the speaker volume"]
-    E -- "not authorized" --> H["Click Authorize Spotify"]
-    E -- "not visible to Spotify API" --> I["Open Spotify desktop,<br/>play any song once,<br/>click Test Devices"]
-    E -- "SUCCESS / Song changed" --> J["Spotify is playing: check<br/>the speaker is the laptop's<br/>sound output and Bluetooth<br/>is connected"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="diagrams/troubleshooting-dark.svg">
+    <img src="diagrams/troubleshooting.svg" alt="Troubleshooting flowchart for a tap that played nothing">
+  </picture>
+</p>
 
 ### Activity messages explained
 

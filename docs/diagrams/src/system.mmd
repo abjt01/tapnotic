@@ -1,0 +1,7 @@
+flowchart TD
+    card(["🪪 RFID card"]) -->|tap| esp["📡 ESP32 + RFID reader"]
+    phone(["📱 Holder's phone"]) -->|"Wi-Fi: picks a song"| app
+    esp -->|"Wi-Fi: POST /rfid {uid}"| app["💻 Windows laptop · app.py"]
+    app -->|Spotify Web API| spotify[("☁️ Spotify")]
+    spotify -->|plays on| desktop["🎵 Spotify desktop app"]
+    desktop -->|Bluetooth| speaker(["🔊 Speaker"])

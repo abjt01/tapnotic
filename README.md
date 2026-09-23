@@ -4,15 +4,12 @@
 
 Tapnotic turns RFID cards into a jukebox. Everyone gets a card, picks their own song from their phone, and from then on tapping that card on the reader plays it on the speaker.
 
-```mermaid
-flowchart LR
-    card(["🪪 RFID card"]) -->|tap| esp["ESP32 + RFID reader"]
-    esp -->|"Wi-Fi: POST /rfid {uid}"| app["💻 Windows laptop<br/>app.py"]
-    app -->|Spotify Web API| spotify[("Spotify")]
-    spotify -->|plays on| desktop["Spotify desktop app"]
-    desktop -->|Bluetooth| speaker(["🔊 Speaker"])
-    phone(["📱 Holder's phone"]) -->|"Wi-Fi: /card/#lt;key#gt;"| app
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/system-dark.svg">
+    <img src="docs/diagrams/system.svg" alt="How Tapnotic fits together: card, ESP32 reader, laptop, Spotify, speaker and the holder's phone">
+  </picture>
+</p>
 
 > 📖 New here? Start with the **[User Manual](docs/USER_MANUAL.md)**. It covers setup, daily use and fixing problems, in plain steps.
 
@@ -34,47 +31,21 @@ flowchart LR
 
 ## How a tap is handled
 
-```mermaid
-flowchart TD
-    tap(["Card tapped"]) --> on{"RFID CONTROL<br/>switched on?"}
-    on -- no --> off["Ignored<br/>(403)"]
-    on -- yes --> known{"Card known?"}
-    known -- no --> reg["Register it as the<br/>next number, e.g. 0024"]
-    reg --> qr
-    known -- yes --> song{"Has a song?"}
-    song -- no --> qr["Show QR code on laptop<br/>(202)"]
-    song -- yes --> playing{"Its song already<br/>playing on the laptop?"}
-    playing -- yes --> same["Nothing changes<br/>(200)"]
-    playing -- no --> newer{"Newer card tapped<br/>in the meantime?"}
-    newer -- yes --> skip["Skipped, newer card wins<br/>(200)"]
-    newer -- no --> play["▶ Play on the laptop<br/>(200)"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/tap-flow-dark.svg">
+    <img src="docs/diagrams/tap-flow.svg" alt="Flowchart of how the laptop handles each card tap">
+  </picture>
+</p>
 
 ## How a holder picks their song
 
-```mermaid
-sequenceDiagram
-    actor H as Card holder
-    participant R as ESP32 reader
-    participant L as Laptop (app.py)
-    participant P as Holder's phone
-    participant S as Spotify
-
-    H->>R: Taps new card
-    R->>L: POST /rfid {"uid": "8E 34 9C 9A"}
-    L->>L: Register card, create private key
-    L-->>H: QR code pops up on screen
-    H->>P: Scans QR code
-    P->>L: Opens /card/#lt;key#gt;
-    H->>P: Types name, searches "blinding lights"
-    P->>L: /card/#lt;key#gt;/search?q=...
-    L->>S: Search tracks
-    S-->>P: Results with album art
-    H->>P: Taps a song, then Save
-    P->>L: POST /card/#lt;key#gt; {name, track_id}
-    L->>S: Check track exists, then play it
-    S-->>H: 🔊 Song plays on the speaker
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/claim-sequence-dark.svg">
+    <img src="docs/diagrams/claim-sequence.svg" alt="Sequence of a card holder claiming a new card and picking a song">
+  </picture>
+</p>
 
 ---
 

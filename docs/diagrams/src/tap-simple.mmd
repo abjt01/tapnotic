@@ -1,0 +1,7 @@
+flowchart TD
+    T(["Card tapped"]) --> K{"Known card<br/>with a song?"}
+    K -->|"No: new card,<br/>or no song yet"| Q["📱 QR code pops up<br/>on the laptop"]
+    Q --> P["Holder scans it and<br/>picks a song (see §5)"]
+    K -->|yes| S{"That song is<br/>already playing?"}
+    S -->|yes| N["Nothing happens<br/>(so it won't restart)"]
+    S -->|no| PL(["🔊 Song plays"])

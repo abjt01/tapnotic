@@ -1,0 +1,14 @@
+flowchart TD
+    A(["🔇 Tapped a card, no sound"]) --> B{"New line in the<br/>Activity box?"}
+    B -->|no| C{"RFID CONTROL<br/>ticked?"}
+    C -->|no| C1["✅ Tick RFID CONTROL"]
+    C -->|yes| C2["📡 Reader can't reach the laptop:<br/>same Wi-Fi? Wi-Fi set to Private?<br/>laptop IP changed?"]
+    B -->|yes| D{"Says 'has no song'?"}
+    D -->|yes| D1["📱 Scan the QR and pick a song"]
+    D -->|no| E{"Says 'not authorized'?"}
+    E -->|yes| E1["🔑 Click Authorize Spotify"]
+    E -->|no| F{"Says 'not visible<br/>to Spotify API'?"}
+    F -->|yes| F1["🎵 Open Spotify desktop, play any<br/>song once, click Test Devices"]
+    F -->|no| G{"Says 'same song'?"}
+    G -->|yes| G1["🔁 It's already playing:<br/>check the volume"]
+    G -->|no| H["🔊 Spotify is playing: set the<br/>Bluetooth speaker as the laptop's<br/>sound output"]

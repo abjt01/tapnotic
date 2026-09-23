@@ -1,0 +1,11 @@
+sequenceDiagram
+    actor You
+    participant Reader
+    participant Laptop
+    participant Phone as Your phone
+    You->>Reader: Tap card
+    Reader->>Laptop: Card number
+    Laptop-->>You: QR code on screen
+    You->>Phone: Scan QR
+    Phone->>Laptop: Name + chosen song
+    Laptop-->>You: 🔊 Your song plays

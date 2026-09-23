@@ -1,0 +1,21 @@
+sequenceDiagram
+    actor H as Card holder
+    participant R as ESP32 reader
+    participant L as Laptop (app.py)
+    participant P as Holder's phone
+    participant S as Spotify
+
+    H->>R: Taps new card
+    R->>L: POST /rfid {"uid": "8E 34 9C 9A"}
+    L->>L: Register card, create private key
+    L-->>H: QR code pops up on screen
+    H->>P: Scans QR code
+    P->>L: Opens /card/#lt;key#gt;
+    H->>P: Types name, searches "blinding lights"
+    P->>L: /card/#lt;key#gt;/search?q=...
+    L->>S: Search tracks
+    S-->>P: Results with album art
+    H->>P: Taps a song, then Save
+    P->>L: POST /card/#lt;key#gt; {name, track_id}
+    L->>S: Check track exists, then play it
+    S-->>H: 🔊 Song plays on the speaker
