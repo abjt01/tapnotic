@@ -1325,6 +1325,30 @@ def card_save(key):
     return jsonify(ok=True, title=title)
 
 
+def keep_awake():
+    """
+    Ask Windows not to sleep while Tapnotic runs, or cards stop working
+    after the idle timeout. The screen can still turn off. Must be
+    called from the main thread, which lives as long as the app.
+    """
+
+    if platform.system() != "Windows":
+        return False
+
+    try:
+        import ctypes
+
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        return bool(
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+            )
+        )
+    except Exception:
+        return False
+
+
 def port_free():
     """True if nothing else is listening on PORT."""
 
@@ -1929,6 +1953,11 @@ if __name__ == "__main__":
 
     time.sleep(0.5)
 
+    awake = keep_awake()
+
     build()
+
+    if awake:
+        log("Windows sleep is blocked while Tapnotic is open.")
 
     root.mainloop()
