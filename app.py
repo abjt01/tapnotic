@@ -61,7 +61,8 @@ QR_SECONDS = 120
 def load_env():
     if not ENV.exists():
         return
-    for line in ENV.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig: Notepad on Windows may save a BOM at the start.
+    for line in ENV.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -198,7 +199,7 @@ startup_warning = None
 
 if MAP.exists():
     try:
-        mappings = json.loads(MAP.read_text(encoding="utf-8"))
+        mappings = json.loads(MAP.read_text(encoding="utf-8-sig"))
     except Exception:
         # Keep the broken file so the cards in it are not lost when
         # the defaults are saved over it.
@@ -322,7 +323,7 @@ latest_scan = 0
 
 if TOKEN.exists():
     try:
-        token_data = json.loads(TOKEN.read_text(encoding="utf-8"))
+        token_data = json.loads(TOKEN.read_text(encoding="utf-8-sig"))
         refresh = token_data.get("refresh")
         expires = float(token_data.get("expires", 0))
     except Exception:
