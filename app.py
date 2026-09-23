@@ -83,6 +83,10 @@ REDIRECT = os.getenv("SPOTIFY_REDIRECT_URI", CALLBACK)
 # device name. Leave blank to auto-detect the computer device.
 LAPTOP_DEVICE_NAME = os.getenv("SPOTIFY_DEVICE_NAME", "").strip()
 
+# Optional. Address phones should use to reach this laptop, for when
+# auto-detection picks a VPN or virtual adapter (e.g. 192.168.1.20).
+LINK_HOST = os.getenv("TAPNOTIC_HOST", "").strip()
+
 
 # ============================================================
 # DEFAULT RFID MAPPINGS
@@ -315,8 +319,12 @@ def lan_ip():
         s.close()
 
 
+def link_host():
+    return LINK_HOST or lan_ip()
+
+
 def card_link(uid):
-    return f"http://{lan_ip()}:{PORT}/card/{mappings[uid]['key']}"
+    return f"http://{link_host()}:{PORT}/card/{mappings[uid]['key']}"
 
 
 # ============================================================
@@ -1905,10 +1913,16 @@ def build():
     log(
         "RFID -> Spotify desktop controller started."
     )
+    host = link_host()
     log(
         "RFID endpoint: "
-        f"http://<LAPTOP-IP>:{PORT}/rfid"
+        f"http://{host}:{PORT}/rfid"
     )
+    if host.startswith(("127.", "169.254.")):
+        log(
+            "WARNING: no Wi-Fi address found; phones and the ESP32 "
+            "cannot reach this laptop."
+        )
     log(
         "Browser is used only for Spotify authorization."
     )
