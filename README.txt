@@ -6,6 +6,7 @@ RFID -> Spotify Desktop Controller
    py -m pip install -r requirements.txt
 4. Run:
    py app.py
+   (or double-click run_app.bat, which installs requirements if needed)
 5. Click Authorize Spotify once if needed.
 6. Keep Spotify desktop installed and signed in.
 7. Click Test Devices. The laptop should appear as type=Computer.
@@ -37,3 +38,18 @@ Card holders pick their own song:
 - for cards set up before this, select the card and click Show QR
 - the link keeps working, so they can bookmark it and change the song
   anytime
+
+Windows setup (do once):
+- Keep the folder outside OneDrive, e.g. C:\tapnotic. OneDrive syncs the
+  Desktop by default and can briefly lock mappings.json (saves are
+  retried, but it is better avoided).
+- Allow Python through Windows Firewall when asked, and make sure the
+  Wi-Fi is set to "Private network" (Settings > Network & internet >
+  Wi-Fi > your network). On "Public", phones and the ESP32 are blocked.
+- Tapnotic keeps Windows awake while it is open, but closing the lid can
+  still sleep the laptop: Control Panel > Power Options > "Choose what
+  closing the lid does" > Do nothing (when plugged in).
+- Give the laptop a fixed IP in your router (DHCP reservation), so the
+  ESP32 address and bookmarked card links keep working.
+- If card QR codes show the wrong IP (VPN, Hyper-V, VirtualBox), set
+  TAPNOTIC_HOST in .env to the laptop's Wi-Fi IP.
