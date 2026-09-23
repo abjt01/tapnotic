@@ -197,7 +197,6 @@ control = True
 
 # Only informational cache. We DO NOT trust this cache for playback.
 cached_device = None
-last_track_id = None
 play_lock = threading.Lock()
 
 
@@ -563,11 +562,42 @@ def start_track(device_id, track_id):
         )
 
 
+def is_playing_track(track_id):
+    """
+    True only if the laptop is playing this exact track right now.
+    A finished, paused or skipped song does not count, so scanning
+    the same card again starts it over.
+    """
+
+    try:
+        r = api("GET", "/me/player")
+    except Exception:
+        return False
+
+    # 204 = nothing playing.
+    if r.status_code != 200 or not r.content:
+        return False
+
+    data = r.json()
+
+    device = data.get("device") or {}
+    if device.get("type") != "Computer":
+        return False
+
+    item = data.get("item") or {}
+    ids = {
+        item.get("id"),
+        (item.get("linked_from") or {}).get("id"),
+    }
+
+    return bool(data.get("is_playing")) and track_id in ids
+
+
 def play(url):
     """
     Switch to a different RFID track.
 
-    Same track:
+    Same track, still playing:
        no Spotify command.
 
     Different track:
@@ -578,25 +608,13 @@ def play(url):
        if anything goes stale, refresh the device and retry.
     """
 
-    global cached_device, last_track_id
+    global cached_device
 
     track_id = track_id_from_url(url)
 
-    # SAME TRACK: do nothing.
-    if last_track_id == track_id:
-        return {
-            "device": (
-                cached_device.get("name", "Laptop")
-                if cached_device
-                else "Laptop"
-            ),
-            "changed": False,
-            "track_id": track_id,
-        }
-
     with play_lock:
-        # Re-check after waiting for another RFID request.
-        if last_track_id == track_id:
+        # SAME TRACK and still playing: do nothing.
+        if is_playing_track(track_id):
             return {
                 "device": (
                     cached_device.get("name", "Laptop")
@@ -640,7 +658,6 @@ def play(url):
                 start_track(device_id, track_id)
 
                 cached_device = device
-                last_track_id = track_id
 
                 log(
                     f"SUCCESS: {device.get('name', 'Laptop')} "
@@ -897,11 +914,6 @@ def edit_card():
 
     save()
     refresh_tree()
-
-    # If the edited track is the one cached as last played,
-    # clear it so the next scan can explicitly play the new URL.
-    global last_track_id
-    last_track_id = None
 
     log("Updated RFID " + uid)
 
@@ -1195,7 +1207,7 @@ def build():
         "Different RFID = fresh device discovery + immediate switch."
     )
     log(
-        "Same RFID/song = no Spotify playback command."
+        "Same RFID/song while playing = no Spotify playback command."
     )
 
     if LAPTOP_DEVICE_NAME:
