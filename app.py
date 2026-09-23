@@ -391,69 +391,114 @@ def save_token():
         )
 
 
-def refresh_access():
+# Only one thread refreshes the Spotify token at a time.
+token_lock = threading.Lock()
+
+# Tries per Spotify API call when the network or Spotify hiccups.
+API_ATTEMPTS = 3
+
+# Longest Spotify rate-limit wait we sit out; longer ones fail fast.
+MAX_RETRY_WAIT = 5
+
+
+def refresh_access(stale=None):
+    """
+    Get a new access token. stale is the token the caller saw fail;
+    if another thread already replaced it, that new token is reused.
+    """
+
     global access, refresh, expires
 
-    if not refresh or not CID or not SECRET:
-        return False
+    with token_lock:
+        if access and access != stale and time.time() < expires:
+            return True
 
+        if not refresh or not CID or not SECRET:
+            return False
+
+        try:
+            r = requests.post(
+                TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh,
+                },
+                auth=(CID, SECRET),
+                timeout=10,
+            )
+        except requests.RequestException as exc:
+            log("Spotify token refresh failed (network): " + str(exc))
+            return False
+
+        if r.status_code != 200:
+            log(
+                f"Spotify token refresh rejected ({r.status_code}). "
+                "Click 'Authorize Spotify' if this keeps happening."
+            )
+            return False
+
+        data = r.json()
+        access = data["access_token"]
+        refresh = data.get("refresh_token", refresh)
+        expires = time.time() + data.get("expires_in", 3600) - 60
+        save_token()
+        return True
+
+
+def retry_after(r):
     try:
-        r = requests.post(
-            TOKEN_URL,
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": refresh,
-            },
-            auth=(CID, SECRET),
-            timeout=10,
-        )
-    except requests.RequestException:
-        return False
-
-    if r.status_code != 200:
-        return False
-
-    data = r.json()
-    access = data["access_token"]
-    refresh = data.get("refresh_token", refresh)
-    expires = time.time() + data.get("expires_in", 3600) - 60
-    save_token()
-    return True
+        return max(1.0, float(r.headers.get("Retry-After", 1)))
+    except ValueError:
+        return 1.0
 
 
 def api(method, path, **kwargs):
-    global access
-
     if not access or time.time() >= expires:
-        if not refresh_access():
+        if not refresh_access(access):
             raise RuntimeError(
                 "Spotify is not authorized. Click 'Authorize Spotify'."
             )
 
     headers = kwargs.pop("headers", {})
-    headers["Authorization"] = "Bearer " + access
 
-    try:
-        r = requests.request(
-            method,
-            API + path,
-            headers=headers,
-            timeout=10,
-            **kwargs,
-        )
-    except requests.RequestException as exc:
-        raise RuntimeError("Spotify network error: " + str(exc))
+    for attempt in range(1, API_ATTEMPTS + 1):
+        last = attempt == API_ATTEMPTS
+        token = access
+        headers["Authorization"] = "Bearer " + token
 
-    # Access token expired unexpectedly.
-    if r.status_code == 401 and refresh_access():
-        headers["Authorization"] = "Bearer " + access
-        r = requests.request(
-            method,
-            API + path,
-            headers=headers,
-            timeout=10,
-            **kwargs,
-        )
+        try:
+            r = requests.request(
+                method,
+                API + path,
+                headers=headers,
+                timeout=10,
+                **kwargs,
+            )
+        except requests.RequestException as exc:
+            # Wi-Fi blips, or the laptop just woke up.
+            if last:
+                raise RuntimeError("Spotify network error: " + str(exc))
+            time.sleep(0.5 * attempt)
+            continue
+
+        # Access token expired unexpectedly.
+        if r.status_code == 401 and not last and refresh_access(token):
+            continue
+
+        # Rate limited: wait as long as Spotify asks, if that is short.
+        if r.status_code == 429 and not last:
+            wait = retry_after(r)
+            if wait <= MAX_RETRY_WAIT:
+                log(f"Spotify rate limit; retrying in {wait:.0f}s")
+                time.sleep(wait)
+                continue
+
+        # Temporary Spotify server trouble.
+        if r.status_code in (500, 502, 503) and not last:
+            time.sleep(0.5 * attempt)
+            continue
+
+        return r
 
     return r
 
