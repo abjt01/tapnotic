@@ -1280,14 +1280,48 @@ def card_save(key):
     return jsonify(ok=True, title=title)
 
 
+def port_free():
+    """True if nothing else is listening on PORT."""
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if platform.system() != "Windows":
+            # Same as Flask, so a quick restart is not reported as busy.
+            # (On Windows this flag would let two apps share the port.)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, PORT))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
 def server():
-    app.run(
-        host=HOST,
-        port=PORT,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
+    try:
+        app.run(
+            host=HOST,
+            port=PORT,
+            debug=False,
+            use_reloader=False,
+            threaded=True,
+        )
+    # Werkzeug calls sys.exit() when it cannot bind the port.
+    except (Exception, SystemExit) as exc:
+        # exc is cleared when this block ends; keep the text.
+        if isinstance(exc, SystemExit):
+            error = f"Could not listen on port {PORT}; it is probably in use."
+        else:
+            error = str(exc)
+        log("RFID server stopped: " + error)
+        ui(
+            lambda: messagebox.showerror(
+                "Tapnotic",
+                f"The RFID server stopped:\n\n{error}\n\n"
+                "Cards will not work until Tapnotic is restarted.",
+                parent=root,
+            )
+        )
 
 
 # ============================================================
@@ -1832,6 +1866,17 @@ def build():
 
 
 if __name__ == "__main__":
+    if not port_free():
+        blank = tk.Tk()
+        blank.withdraw()
+        messagebox.showerror(
+            "Tapnotic",
+            f"Port {PORT} is already in use.\n\n"
+            "Tapnotic is probably already running (check the taskbar), "
+            "or another program is using the port.",
+        )
+        raise SystemExit(1)
+
     threading.Thread(
         target=server,
         daemon=True,
