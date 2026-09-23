@@ -1,6 +1,8 @@
 import os
 import re
+import sys
 import json
+import queue
 import time
 import secrets
 import webbrowser
@@ -371,11 +373,15 @@ toggle = None
 LOG_LINES = 1000
 
 
+# Tk must only be touched from the main thread. Background threads
+# (Flask, playback) put work here and the GUI runs it every GUI_POLL_MS.
+gui_queue = queue.Queue()
+GUI_POLL_MS = 100
+
+
 def log(message):
     print(time.strftime("%H:%M:%S"), message, flush=True)
-
-    if root and logbox:
-        root.after(0, lambda: show_log(message))
+    ui(lambda: show_log(message))
 
 
 def show_log(message):
@@ -408,9 +414,23 @@ threading.excepthook = lambda args: log_crash(
 
 
 def ui(fn):
-    """Run fn on the GUI thread (safe to call from Flask threads)."""
-    if root:
-        root.after(0, fn)
+    """Run fn on the GUI thread (safe to call from any thread)."""
+    gui_queue.put(fn)
+
+
+def pump_gui():
+    while True:
+        try:
+            fn = gui_queue.get_nowait()
+        except queue.Empty:
+            break
+
+        try:
+            fn()
+        except Exception:
+            log_crash("window", *sys.exc_info())
+
+    root.after(GUI_POLL_MS, pump_gui)
 
 
 # ============================================================
@@ -1938,6 +1958,7 @@ def build():
     )
 
     refresh_tree()
+    pump_gui()
 
     log(
         "RFID -> Spotify desktop controller started."
