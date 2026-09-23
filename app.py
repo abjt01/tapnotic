@@ -19,7 +19,7 @@ from tkinter import ttk, messagebox, simpledialog
 # - ESP32 sends POST /rfid to this laptop
 # - Laptop controls the native Spotify desktop app
 # - Every DIFFERENT RFID card refreshes Spotify devices
-# - Playback is transferred to the laptop and the new track starts
+# - The new track starts directly on the laptop
 # - Same track scanned again: no Spotify playback command
 # - Browser is used only for Spotify OAuth authorization
 # ============================================================
@@ -525,7 +525,7 @@ def re_full_track_id(track_id):
 
 def transfer_to_device(device_id):
     """
-    Move Spotify playback to the laptop.
+    Move Spotify playback to the laptop without resuming the old song.
     A 204 response means success.
     """
 
@@ -534,7 +534,7 @@ def transfer_to_device(device_id):
         "/me/player",
         json={
             "device_ids": [device_id],
-            "play": True,
+            "play": False,
         },
     )
 
@@ -545,6 +545,11 @@ def transfer_to_device(device_id):
 
 
 def start_track(device_id, track_id):
+    """
+    Play the track on the given device. Passing device_id already moves
+    playback there, so no separate transfer is needed in the normal case.
+    """
+
     r = api(
         "PUT",
         "/me/player/play",
@@ -603,8 +608,8 @@ def play(url):
     Different track:
        open Spotify
        fresh device discovery
-       transfer to laptop
-       start track
+       start track on the laptop
+       (transfer first only if Spotify says the laptop is inactive)
        if anything goes stale, refresh the device and retry.
     """
 
@@ -648,14 +653,16 @@ def play(url):
             device_id = device["id"]
 
             try:
-                # Transfer playback to this laptop first.
-                transfer_to_device(device_id)
-
-                # Small delay gives Spotify desktop time to become active.
-                time.sleep(0.15)
-
-                # Start the requested RFID track.
-                start_track(device_id, track_id)
+                try:
+                    start_track(device_id, track_id)
+                except RuntimeError as exc:
+                    # 404 = laptop not active yet. Wake it up silently,
+                    # then play.
+                    if "Play failed: 404" not in str(exc):
+                        raise
+                    transfer_to_device(device_id)
+                    time.sleep(0.15)
+                    start_track(device_id, track_id)
 
                 cached_device = device
 

@@ -14,7 +14,7 @@ RFID -> Spotify Desktop Controller
 
 This version:
 - always refreshes Spotify device discovery for a different RFID track
-- transfers playback to the laptop before starting the track
+- starts the track directly on the laptop (no blip of the previous song)
 - retries with fresh device IDs
 - same track scanned again does nothing while it is still playing
 - a finished or paused song starts over when its card is scanned
