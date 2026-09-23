@@ -173,17 +173,43 @@ DEFAULT = {
     },
 }
 
+def write_json(path, data):
+    """
+    Write to a temp file first, then swap it in, so a crash mid-save
+    can never leave a half-written file behind.
+    """
+
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    os.replace(tmp, path)
+
+
+# Shown in the activity log once the window is up.
+startup_warning = None
+
 if MAP.exists():
     try:
         mappings = json.loads(MAP.read_text(encoding="utf-8"))
     except Exception:
+        # Keep the broken file so the cards in it are not lost when
+        # the defaults are saved over it.
+        broken = MAP.with_name(
+            "mappings.broken-" + time.strftime("%Y%m%d-%H%M%S") + ".json"
+        )
+        os.replace(MAP, broken)
         mappings = dict(DEFAULT)
+        write_json(MAP, mappings)
+        startup_warning = (
+            "mappings.json could not be read. It was moved to "
+            + broken.name
+            + " and the default cards were loaded."
+        )
 else:
     mappings = dict(DEFAULT)
-    MAP.write_text(
-        json.dumps(mappings, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    write_json(MAP, mappings)
 
 
 # ============================================================
@@ -246,12 +272,9 @@ def log(message):
 
 def save_token():
     if refresh:
-        TOKEN.write_text(
-            json.dumps(
-                {"refresh": refresh, "expires": expires},
-                indent=2,
-            ),
-            encoding="utf-8",
+        write_json(
+            TOKEN,
+            {"refresh": refresh, "expires": expires},
         )
 
 
@@ -825,14 +848,7 @@ def server():
 # ============================================================
 
 def save():
-    MAP.write_text(
-        json.dumps(
-            mappings,
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    write_json(MAP, mappings)
 
 
 def selected():
@@ -1244,6 +1260,9 @@ def build():
     log(
         "Same RFID/song while playing = no Spotify playback command."
     )
+
+    if startup_warning:
+        log("WARNING: " + startup_warning)
 
     if LAPTOP_DEVICE_NAME:
         log(

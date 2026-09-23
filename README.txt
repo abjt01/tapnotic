@@ -23,3 +23,5 @@ This version:
 - uses Spotify desktop for playback; browser is only OAuth
 - keeps Add/Edit/Delete card management
 - does not overwrite an existing mappings.json
+- saves mappings.json safely; if it ever gets corrupted it is kept as
+  mappings.broken-<date>.json instead of being replaced
