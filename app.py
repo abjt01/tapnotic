@@ -191,7 +191,24 @@ def write_json(path, data):
         json.dumps(data, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    os.replace(tmp, path)
+    replace_file(tmp, path)
+
+
+def replace_file(src, dst, attempts=10):
+    """
+    os.replace, retried. On Windows, OneDrive, antivirus or an open
+    editor can hold a file for a moment and the swap fails with
+    PermissionError.
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == attempts:
+                raise
+            time.sleep(0.1 * attempt)
 
 
 # Shown in the activity log once the window is up.
@@ -206,7 +223,7 @@ if MAP.exists():
         broken = MAP.with_name(
             "mappings.broken-" + time.strftime("%Y%m%d-%H%M%S") + ".json"
         )
-        os.replace(MAP, broken)
+        replace_file(MAP, broken)
         mappings = dict(DEFAULT)
         write_json(MAP, mappings)
         startup_warning = (
@@ -1243,7 +1260,12 @@ def card_save(key):
         value["name"] = join_name(number, holder or old_holder) or uid
         value["spotify"] = url
         value["title"] = title
-        save()
+
+        try:
+            save()
+        except OSError as exc:
+            log("Could not save mappings.json: " + str(exc))
+            return jsonify(error="Could not save, try again"), 500
 
     log(f"Card {value['name']} set its song: {title}")
     ui(refresh_tree)
