@@ -13,9 +13,10 @@ RFID -> Spotify Desktop Controller
    http://LAPTOP_IP:5000/rfid
 
 This version:
-- always refreshes Spotify device discovery for a different RFID track
+- remembers the laptop's Spotify device, so switching is fast
 - starts the track directly on the laptop (no blip of the previous song)
-- retries with fresh device IDs
+- looks the device up again and retries if it goes stale
+- opens Spotify desktop only when the laptop isn't visible to Spotify
 - same track scanned again does nothing while it is still playing
 - a finished or paused song starts over when its card is scanned
 - uses Spotify desktop for playback; browser is only OAuth

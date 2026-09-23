@@ -18,7 +18,8 @@ from tkinter import ttk, messagebox, simpledialog
 # RFID -> Spotify Desktop Controller
 # - ESP32 sends POST /rfid to this laptop
 # - Laptop controls the native Spotify desktop app
-# - Every DIFFERENT RFID card refreshes Spotify devices
+# - The laptop's Spotify device ID is reused; it is looked up again
+#   only when it stops working
 # - The new track starts directly on the laptop
 # - Same track scanned again: no Spotify playback command
 # - Browser is used only for Spotify OAuth authorization
@@ -195,7 +196,7 @@ expires = 0
 state = None
 control = True
 
-# Only informational cache. We DO NOT trust this cache for playback.
+# Last known laptop device. Cleared as soon as playback on it fails.
 cached_device = None
 play_lock = threading.Lock()
 
@@ -448,23 +449,25 @@ def choose_laptop_device(device_list):
 
 def discover_laptop_device():
     """
-    IMPORTANT:
-    Always asks Spotify for a fresh device list.
-    This prevents stale device IDs from causing:
-      'Spotify laptop device disappeared'
+    Ask Spotify for a fresh device list and pick the laptop.
+    If the laptop is not visible, open Spotify desktop once and keep
+    polling until it shows up or DEVICE_WAIT_SECONDS runs out.
     """
 
     global cached_device
 
     deadline = time.monotonic() + DEVICE_WAIT_SECONDS
     last_error = None
+    logged = False
+    opened = False
 
     while time.monotonic() < deadline:
         try:
             ds = devices()
 
             # Log devices once per discovery call.
-            if ds:
+            if ds and not logged:
+                logged = True
                 names = ", ".join(
                     f"{d.get('name','?')} [{d.get('type','?')}]"
                     for d in ds
@@ -481,6 +484,11 @@ def discover_laptop_device():
                     f"(id refreshed)"
                 )
                 return selected
+
+            if not opened:
+                opened = True
+                log("Laptop not visible to Spotify; opening Spotify...")
+                open_spotify()
 
         except Exception as exc:
             last_error = exc
@@ -606,11 +614,10 @@ def play(url):
        no Spotify command.
 
     Different track:
-       open Spotify
-       fresh device discovery
+       reuse the known laptop device (look it up if unknown)
        start track on the laptop
        (transfer first only if Spotify says the laptop is inactive)
-       if anything goes stale, refresh the device and retry.
+       if anything goes stale, look the device up again and retry.
     """
 
     global cached_device
@@ -630,8 +637,6 @@ def play(url):
                 "track_id": track_id,
             }
 
-        open_spotify()
-
         last_error = None
 
         for attempt in range(1, PLAY_ATTEMPTS + 1):
@@ -640,8 +645,8 @@ def play(url):
                 f"for track {track_id}"
             )
 
-            # NEVER trust the old device ID.
-            device = discover_laptop_device()
+            # Reuse the known laptop; look it up after any failure.
+            device = cached_device or discover_laptop_device()
 
             if not device:
                 last_error = (
@@ -690,7 +695,7 @@ def play(url):
 
         raise RuntimeError(
             "Could not switch Spotify playback after "
-            f"{PLAY_ATTEMPTS} fresh attempts. Last error: {last_error}"
+            f"{PLAY_ATTEMPTS} attempts. Last error: {last_error}"
         )
 
 
@@ -1211,7 +1216,7 @@ def build():
         "Playback uses the native Spotify desktop app."
     )
     log(
-        "Different RFID = fresh device discovery + immediate switch."
+        "Different RFID = immediate switch on the laptop."
     )
     log(
         "Same RFID/song while playing = no Spotify playback command."
