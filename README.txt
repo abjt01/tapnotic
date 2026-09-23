@@ -11,6 +11,8 @@ RFID -> Spotify Desktop Controller
 7. Click Test Devices. The laptop should appear as type=Computer.
 8. ESP32 should POST JSON like {"uid":"9A ED EA 30"} to:
    http://LAPTOP_IP:5000/rfid
+   Replies: 200 = played / same song, 202 = card has no song yet
+   (QR shown on the laptop), 403 = RFID control off.
 
 This version:
 - remembers the laptop's Spotify device, so switching is fast
@@ -27,6 +29,8 @@ This version:
   mappings.broken-<date>.json instead of being replaced
 
 Card holders pick their own song:
+- tap a new card (or one with no song yet) and it is registered
+  automatically; a QR code for its page pops up on the laptop
 - every card has a private page at http://LAPTOP_IP:5000/card/<key>
 - the holder opens it on their phone (same Wi-Fi), types their name,
   searches Spotify and saves; the song plays on the speaker right away

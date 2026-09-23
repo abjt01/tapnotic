@@ -11,6 +11,7 @@ import platform
 import socket
 from pathlib import Path
 
+import qrcode
 import requests
 from flask import Flask, request, jsonify
 import tkinter as tk
@@ -52,6 +53,9 @@ DEVICE_POLL_SECONDS = 0.35
 
 # Number of complete playback attempts for a different RFID track.
 PLAY_ATTEMPTS = 3
+
+# How long the "scan to pick your song" QR stays on the laptop screen.
+QR_SECONDS = 120
 
 
 def load_env():
@@ -250,6 +254,33 @@ def card_by_key(key):
             return uid, value
 
     return None, None
+
+
+def next_number():
+    """Next free card number, e.g. '0024'."""
+
+    numbers = [
+        int(n)
+        for n, _ in (split_name(v.get("name", "")) for v in mappings.values())
+        if n
+    ]
+    return str(max(numbers, default=0) + 1).zfill(4)
+
+
+def register_card(uid):
+    """Add a card the reader has never seen, with no song yet."""
+
+    with map_lock:
+        mappings[uid] = {
+            "name": next_number(),
+            "spotify": "",
+            "key": new_key(),
+        }
+        save()
+
+    log(f"New card {uid} registered as {mappings[uid]['name']}")
+    ui(refresh_tree)
+    return mappings[uid]
 
 
 def lan_ip():
@@ -850,15 +881,20 @@ def rfid():
             error="Missing RFID UID",
         ), 400
 
-    item = mappings.get(uid)
+    with map_lock:
+        item = mappings.get(uid) or register_card(uid)
 
-    if not item:
-        log("Unknown RFID: " + uid)
+    # New card, or a card nobody has picked a song for yet:
+    # show its QR on the laptop so the holder can claim it.
+    if not item.get("spotify"):
+        log(f"RFID {uid} -> {item.get('name', uid)} has no song; showing QR")
+        ui(lambda: show_qr(uid))
         return jsonify(
-            ok=False,
-            error="Unknown RFID",
-            uid=uid,
-        ), 404
+            ok=True,
+            changed=False,
+            claim=True,
+            message="No song yet; scan the QR code on the laptop",
+        ), 202
 
     try:
         result = play(item.get("spotify", ""))
@@ -1210,6 +1246,7 @@ def card_save(key):
 
     log(f"Card {value['name']} set its song: {title}")
     ui(refresh_tree)
+    ui(lambda: close_qr(uid))
 
     threading.Thread(
         target=play_quietly,
@@ -1376,6 +1413,98 @@ def delete_card():
         save()
         refresh_tree()
         log("Deleted RFID " + uid)
+
+
+qr_windows = {}
+
+
+def qr_matrix(text):
+    qr = qrcode.QRCode(border=2)
+    qr.add_data(text)
+    qr.make(fit=True)
+    return qr.get_matrix()
+
+
+def show_qr(uid):
+    """Pop up the card's link as a QR code for the holder to scan."""
+
+    if uid not in mappings:
+        return
+
+    win = qr_windows.get(uid)
+    if win and win.winfo_exists():
+        win.lift()
+        return
+
+    link = card_link(uid)
+    number, holder = split_name(mappings[uid].get("name", ""))
+
+    win = tk.Toplevel(root)
+    win.title("Card " + (number or uid))
+    win.configure(padx=24, pady=20)
+    win.resizable(False, False)
+    win.attributes("-topmost", True)
+    qr_windows[uid] = win
+
+    ttk.Label(
+        win,
+        text=("Card " + number) if number else uid,
+        font=("Segoe UI", 18, "bold"),
+    ).pack()
+
+    ttk.Label(
+        win,
+        text=(
+            f"Hi {holder}, scan to change your song"
+            if holder
+            else "Scan to pick your song"
+        ),
+    ).pack(pady=(2, 12))
+
+    matrix = qr_matrix(link)
+    cell = max(4, 300 // len(matrix))
+    size = cell * len(matrix)
+
+    canvas = tk.Canvas(
+        win,
+        width=size,
+        height=size,
+        bg="white",
+        highlightthickness=0,
+    )
+    for y, row in enumerate(matrix):
+        for x, dark in enumerate(row):
+            if dark:
+                canvas.create_rectangle(
+                    x * cell,
+                    y * cell,
+                    (x + 1) * cell,
+                    (y + 1) * cell,
+                    fill="black",
+                    width=0,
+                )
+    canvas.pack()
+
+    # Read-only entry so the link can also be copied.
+    entry = ttk.Entry(win, width=len(link))
+    entry.insert(0, link)
+    entry.configure(state="readonly")
+    entry.pack(pady=(12, 0))
+
+    ttk.Button(
+        win,
+        text="Close",
+        command=lambda: close_qr(uid),
+    ).pack(pady=(12, 0))
+
+    win.after(QR_SECONDS * 1000, lambda: close_qr(uid))
+
+
+def close_qr(uid):
+    win = qr_windows.pop(uid, None)
+
+    if win and win.winfo_exists():
+        win.destroy()
 
 
 def test():
