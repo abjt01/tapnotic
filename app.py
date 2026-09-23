@@ -9,6 +9,7 @@ import urllib.parse
 import subprocess
 import platform
 import socket
+import traceback
 from pathlib import Path
 
 import qrcode
@@ -365,20 +366,45 @@ logbox = None
 toggle = None
 
 
+# Oldest activity lines are dropped past this, so a window left open
+# for days does not keep growing.
+LOG_LINES = 1000
+
+
 def log(message):
     print(time.strftime("%H:%M:%S"), message, flush=True)
 
     if root and logbox:
-        root.after(
-            0,
-            lambda: (
-                logbox.insert(
-                    "end",
-                    time.strftime("%H:%M:%S") + "  " + message + "\n",
-                ),
-                logbox.see("end"),
-            ),
-        )
+        root.after(0, lambda: show_log(message))
+
+
+def show_log(message):
+    logbox.insert(
+        "end",
+        time.strftime("%H:%M:%S") + "  " + message + "\n",
+    )
+
+    # The text always ends with a newline, hence the - 1.
+    lines = int(logbox.index("end-1c").split(".")[0]) - 1
+    if lines > LOG_LINES:
+        logbox.delete("1.0", f"{lines - LOG_LINES}.0")
+
+    logbox.see("end")
+
+
+def log_crash(where, exc_type, exc, tb):
+    """Show unexpected errors in the activity log, not only the console."""
+
+    traceback.print_exception(exc_type, exc, tb)
+    log(f"Unexpected error in {where}: {exc_type.__name__}: {exc}")
+
+
+threading.excepthook = lambda args: log_crash(
+    "background task",
+    args.exc_type,
+    args.exc_value,
+    args.exc_traceback,
+)
 
 
 def ui(fn):
@@ -1779,6 +1805,9 @@ def build():
     global root, tree, logbox, toggle
 
     root = tk.Tk()
+    root.report_callback_exception = (
+        lambda exc_type, exc, tb: log_crash("window", exc_type, exc, tb)
+    )
     root.title(
         "RFID -> Spotify Desktop Controller"
     )
