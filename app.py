@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import secrets
@@ -321,6 +322,12 @@ def log(message):
                 logbox.see("end"),
             ),
         )
+
+
+def ui(fn):
+    """Run fn on the GUI thread (safe to call from Flask threads)."""
+    if root:
+        root.after(0, fn)
 
 
 # ============================================================
@@ -888,6 +895,329 @@ def rfid():
             ok=False,
             error=str(exc),
         ), 500
+
+
+# ============================================================
+# CARD PAGE (opened on the holder's phone)
+# ============================================================
+
+def split_name(name):
+    """'0012 / di' -> ('0012', 'di'). Cards without a number keep
+    the whole name as the holder."""
+
+    m = re.match(r"\s*(\d+)\s*(?:/\s*(.*))?$", name or "")
+    if not m:
+        return "", (name or "").strip()
+    return m.group(1), (m.group(2) or "").strip()
+
+
+def join_name(number, holder):
+    if number and holder:
+        return f"{number} / {holder}"
+    return number or holder
+
+
+def track_summary(t):
+    images = (t.get("album") or {}).get("images") or []
+    return {
+        "id": t.get("id"),
+        "title": t.get("name", ""),
+        "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
+        # Spotify lists album art largest first; the smallest is enough.
+        "image": images[-1]["url"] if images else "",
+    }
+
+
+def track_title(t):
+    return f"{t['title']} — {t['artists']}"
+
+
+def play_quietly(url):
+    try:
+        play(url)
+    except Exception as exc:
+        log("Playback error after card update: " + str(exc))
+
+
+CARD_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tapnotic</title>
+<style>
+  :root {
+    --bg: #0e0d12; --card: #18161f; --line: #2a2733; --text: #f1eff6;
+    --muted: #9a95a8; --accent: #b28cff; --accent-ink: #160f24; --ok: #6fe0a4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 16px 120px; }
+  .brand { color: var(--accent); font-weight: 700; letter-spacing: .08em;
+           text-transform: uppercase; font-size: 13px; }
+  h1 { margin: 4px 0 20px; font-size: 28px; }
+  .now { background: var(--card); border: 1px solid var(--line);
+         border-radius: 14px; padding: 14px 16px; margin-bottom: 22px; }
+  .now small { color: var(--muted); display: block; margin-bottom: 2px; }
+  label { display: block; color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+  input {
+    width: 100%; padding: 13px 14px; margin-bottom: 18px; font: inherit;
+    color: var(--text); background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  #status { color: var(--muted); min-height: 1.4em; margin: -8px 0 8px; font-size: 14px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .track {
+    display: flex; gap: 12px; align-items: center; padding: 8px;
+    border-radius: 12px; cursor: pointer; border: 1px solid transparent;
+  }
+  .track:active, .track:focus { background: var(--card); outline: none; }
+  .track.on { background: var(--card); border-color: var(--accent); }
+  .track img { width: 48px; height: 48px; border-radius: 6px; background: var(--line); flex: none; }
+  .track div { min-width: 0; }
+  .track b, .track span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track span { color: var(--muted); font-size: 14px; }
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px 20px;
+    background: linear-gradient(transparent, var(--bg) 30%);
+  }
+  button {
+    display: block; width: 100%; max-width: 448px; margin: 0 auto; padding: 15px;
+    font: inherit; font-weight: 700; border: 0; border-radius: 14px;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  button:disabled { opacity: .35; cursor: default; }
+  .done { color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Tapnotic</div>
+  <h1 id="num">Your card</h1>
+
+  <div class="now">
+    <small>Current song</small>
+    <div id="current">No song yet</div>
+  </div>
+
+  <label for="name">Your name</label>
+  <input id="name" maxlength="30" autocomplete="off" placeholder="e.g. abhij">
+
+  <label for="q">Pick your song</label>
+  <input id="q" type="search" autocomplete="off" placeholder="Search Spotify">
+  <div id="status"></div>
+  <ul id="results"></ul>
+</main>
+
+<div class="bar"><button id="save" disabled>Pick a song</button></div>
+
+<script>
+const CARD = __CARD__;
+const $ = (s) => document.querySelector(s);
+let chosen = null, timer = null, seq = 0;
+
+$("#num").textContent = CARD.number ? "Card " + CARD.number : "Your card";
+$("#name").value = CARD.holder;
+if (CARD.title) $("#current").textContent = CARD.title;
+else if (CARD.spotify) $("#current").textContent = "A song is set";
+
+$("#q").addEventListener("input", () => {
+  clearTimeout(timer);
+  timer = setTimeout(search, 300);
+});
+
+async function search() {
+  const q = $("#q").value.trim();
+  const mine = ++seq;
+  if (!q) { render([]); $("#status").textContent = ""; return; }
+  $("#status").textContent = "Searching...";
+  try {
+    const r = await fetch("/card/" + CARD.key + "/search?q=" + encodeURIComponent(q));
+    const d = await r.json();
+    if (mine !== seq) return;
+    if (!r.ok) throw new Error(d.error || "Search failed");
+    $("#status").textContent = d.tracks.length ? "" : "No songs found";
+    render(d.tracks);
+  } catch (e) {
+    if (mine === seq) $("#status").textContent = e.message;
+  }
+}
+
+function render(tracks) {
+  const list = $("#results");
+  list.replaceChildren();
+  for (const t of tracks) {
+    const li = document.createElement("li");
+    li.className = "track";
+    li.tabIndex = 0;
+    const img = document.createElement("img");
+    img.alt = "";
+    if (t.image) img.src = t.image;
+    const text = document.createElement("div");
+    const title = document.createElement("b");
+    title.textContent = t.title;
+    const artists = document.createElement("span");
+    artists.textContent = t.artists;
+    text.append(title, artists);
+    li.append(img, text);
+    li.addEventListener("click", () => pick(t, li));
+    list.append(li);
+  }
+}
+
+function pick(t, li) {
+  chosen = t;
+  document.querySelectorAll(".track.on").forEach((x) => x.classList.remove("on"));
+  li.classList.add("on");
+  $("#save").disabled = false;
+  $("#save").textContent = "Save “" + t.title + "”";
+}
+
+$("#save").addEventListener("click", async () => {
+  if (!chosen) return;
+  const btn = $("#save");
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+  try {
+    const r = await fetch("/card/" + CARD.key, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("#name").value, track_id: chosen.id }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Could not save");
+    $("#current").textContent = d.title;
+    $("#current").classList.add("done");
+    btn.textContent = "Saved — playing on the speaker";
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = e.message + " — try again";
+  }
+});
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/card/<key>")
+def card_page(key):
+    uid, value = card_by_key(key)
+
+    if not uid:
+        return "<h2>This card link is not valid.</h2>", 404
+
+    # Cards set up before the page existed have no title yet.
+    if value.get("spotify") and not value.get("title"):
+        try:
+            r = api("GET", "/tracks/" + track_id_from_url(value["spotify"]))
+            if r.status_code == 200:
+                t = track_summary(r.json())
+                with map_lock:
+                    value["title"] = track_title(t)
+                    save()
+        except Exception:
+            pass
+
+    number, holder = split_name(value.get("name", ""))
+    info = {
+        "key": key,
+        "number": number,
+        "holder": holder,
+        "title": value.get("title", ""),
+        "spotify": value.get("spotify", ""),
+    }
+
+    # "</" is escaped so card data can never close the script tag.
+    return CARD_HTML.replace(
+        "__CARD__",
+        json.dumps(info).replace("</", "<\\/"),
+    )
+
+
+@app.get("/card/<key>/search")
+def card_search(key):
+    uid, _ = card_by_key(key)
+
+    if not uid:
+        return jsonify(error="This card link is not valid."), 404
+
+    q = request.args.get("q", "").strip()[:100]
+
+    if not q:
+        return jsonify(tracks=[])
+
+    try:
+        r = api(
+            "GET",
+            "/search",
+            params={"q": q, "type": "track", "limit": 10},
+        )
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 503
+
+    if r.status_code != 200:
+        return jsonify(error=f"Spotify search failed ({r.status_code})"), 502
+
+    items = (r.json().get("tracks") or {}).get("items") or []
+
+    return jsonify(tracks=[track_summary(t) for t in items if t])
+
+
+@app.post("/card/<key>")
+def card_save(key):
+    uid, _ = card_by_key(key)
+
+    if not uid:
+        return jsonify(error="This card link is not valid."), 404
+
+    data = request.get_json(silent=True) or {}
+    holder = " ".join(str(data.get("name", "")).split())[:30]
+    track_id = str(data.get("track_id", "")).strip()
+
+    if not re_full_track_id(track_id):
+        return jsonify(error="Pick a song first"), 400
+
+    # Look the track up so only real Spotify songs are saved.
+    try:
+        r = api("GET", "/tracks/" + track_id)
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 503
+
+    if r.status_code != 200:
+        return jsonify(error="Song not found on Spotify"), 400
+
+    t = track_summary(r.json())
+    title = track_title(t)
+    url = "https://open.spotify.com/track/" + track_id
+
+    with map_lock:
+        uid, value = card_by_key(key)
+
+        if not uid:
+            return jsonify(error="This card link is not valid."), 404
+
+        number, old_holder = split_name(value.get("name", ""))
+        value["name"] = join_name(number, holder or old_holder) or uid
+        value["spotify"] = url
+        value["title"] = title
+        save()
+
+    log(f"Card {value['name']} set its song: {title}")
+    ui(refresh_tree)
+
+    threading.Thread(
+        target=play_quietly,
+        args=(url,),
+        daemon=True,
+    ).start()
+
+    return jsonify(ok=True, title=title)
 
 
 def server():

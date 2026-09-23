@@ -25,3 +25,10 @@ This version:
 - does not overwrite an existing mappings.json
 - saves mappings.json safely; if it ever gets corrupted it is kept as
   mappings.broken-<date>.json instead of being replaced
+
+Card holders pick their own song:
+- every card has a private page at http://LAPTOP_IP:5000/card/<key>
+- the holder opens it on their phone (same Wi-Fi), types their name,
+  searches Spotify and saves; the song plays on the speaker right away
+- the link keeps working, so they can bookmark it and change the song
+  anytime
