@@ -1418,6 +1418,20 @@ def delete_card():
 qr_windows = {}
 
 
+def share_card():
+    uid = selected()
+
+    if not uid:
+        messagebox.showinfo(
+            "Show QR",
+            "Select an RFID card first.",
+            parent=root,
+        )
+        return
+
+    show_qr(uid)
+
+
 def qr_matrix(text):
     qr = qrcode.QRCode(border=2)
     qr.add_data(text)
@@ -1672,6 +1686,7 @@ def build():
         ("Open Spotify", open_spotify),
         ("Test Devices", test_devices),
         ("Test Selected", test),
+        ("Show QR", share_card),
         ("+ Add Card", add_card),
         ("Edit", edit_card),
         ("Delete", delete_card),
