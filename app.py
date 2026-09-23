@@ -200,6 +200,10 @@ control = True
 cached_device = None
 play_lock = threading.Lock()
 
+# Every scan takes a number; only the newest one is allowed to play.
+scan_lock = threading.Lock()
+latest_scan = 0
+
 
 if TOKEN.exists():
     try:
@@ -606,9 +610,25 @@ def is_playing_track(track_id):
     return bool(data.get("is_playing")) and track_id in ids
 
 
+def play_result(device, changed, track_id, skipped=False):
+    return {
+        "device": (
+            device.get("name", "Laptop")
+            if device
+            else "Laptop"
+        ),
+        "changed": changed,
+        "skipped": skipped,
+        "track_id": track_id,
+    }
+
+
 def play(url):
     """
     Switch to a different RFID track.
+
+    Several cards scanned quickly:
+       only the last one plays; older scans still waiting are skipped.
 
     Same track, still playing:
        no Spotify command.
@@ -620,26 +640,27 @@ def play(url):
        if anything goes stale, look the device up again and retry.
     """
 
-    global cached_device
+    global cached_device, latest_scan
 
     track_id = track_id_from_url(url)
 
+    with scan_lock:
+        latest_scan += 1
+        scan = latest_scan
+
     with play_lock:
         # SAME TRACK and still playing: do nothing.
-        if is_playing_track(track_id):
-            return {
-                "device": (
-                    cached_device.get("name", "Laptop")
-                    if cached_device
-                    else "Laptop"
-                ),
-                "changed": False,
-                "track_id": track_id,
-            }
+        if scan == latest_scan and is_playing_track(track_id):
+            return play_result(cached_device, False, track_id)
 
         last_error = None
 
         for attempt in range(1, PLAY_ATTEMPTS + 1):
+            # A newer card was scanned while this one waited: let it win.
+            if scan != latest_scan:
+                log(f"Skipping track {track_id}; a newer card was scanned")
+                return play_result(cached_device, False, track_id, True)
+
             log(
                 f"Playback attempt {attempt}/{PLAY_ATTEMPTS} "
                 f"for track {track_id}"
@@ -676,11 +697,7 @@ def play(url):
                     f"-> {track_id}"
                 )
 
-                return {
-                    "device": device.get("name", "Laptop"),
-                    "changed": True,
-                    "track_id": track_id,
-                }
+                return play_result(device, True, track_id)
 
             except Exception as exc:
                 last_error = exc
@@ -759,7 +776,9 @@ def rfid():
     try:
         result = play(item.get("spotify", ""))
 
-        if result["changed"]:
+        if result["skipped"]:
+            message = "Skipped; a newer card was scanned"
+        elif result["changed"]:
             log(
                 f"RFID {uid} -> "
                 f"{item.get('name', uid)} -> "
@@ -976,7 +995,11 @@ def test():
                 item.get("spotify", "")
             )
 
-            if result["changed"]:
+            if result["skipped"]:
+                log(
+                    "TEST: skipped; a newer card was scanned."
+                )
+            elif result["changed"]:
                 log(
                     "TEST SUCCESS: " +
                     result["device"]

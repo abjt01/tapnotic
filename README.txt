@@ -17,6 +17,7 @@ This version:
 - starts the track directly on the laptop (no blip of the previous song)
 - looks the device up again and retries if it goes stale
 - opens Spotify desktop only when the laptop isn't visible to Spotify
+- several cards scanned quickly: only the last one plays
 - same track scanned again does nothing while it is still playing
 - a finished or paused song starts over when its card is scanned
 - uses Spotify desktop for playback; browser is only OAuth
